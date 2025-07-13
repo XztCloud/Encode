@@ -11,7 +11,10 @@ link_directories(${CMAKE_SOURCE_DIR}/opensource/ffmpeg/lib)
 add_executable(Encode
         src/DecodeFile.cpp
         src/DecodeFile.h
-        src/utils/SafeQueue.h)
+        src/utils/SafeQueue.h
+        src/SaveFrameTool.cpp
+        src/SaveFrameTool.h
+        src/utils/SafeLatestQueue.h)
 set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++")
 target_link_libraries(
         Encode

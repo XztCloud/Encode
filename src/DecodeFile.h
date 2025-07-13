@@ -27,5 +27,7 @@ public:
     explicit DecodeFile(const char *file_path):file_path(file_path), format_ctx(nullptr), video_codec_ctx(nullptr), audio_codec_ctx(
             nullptr), video_stream_index(-1), audio_stream_index(-1) {};
     bool InitDeCode();
-
+    void StartDecode();
+    // 保存成png,测试用
+    static void SaveFrameToPNG(AVFrame* frame);
 };
