@@ -12,11 +12,12 @@ template<typename T>
 class SafeLatestQueue : public SafeQueue<T> {
 private:
     size_t max_size;  // queue size
+
 public:
     explicit SafeLatestQueue(size_t max_size = 10) : max_size(max_size) {}
-    void push(const T& item) {
+    void push_item(const T& item) {
         lock_guard<std::mutex> lock(this->mutex);   // 可重入锁
-        this->queue.push(item);
+        this->push(item);
 
         while(this->queue.size() > max_size) {
             this->queue.pop();

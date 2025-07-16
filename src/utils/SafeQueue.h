@@ -14,13 +14,13 @@ using namespace std;
 
 template<typename T>
 class SafeQueue {
-private:
+protected:
     queue<T> queue;
     mutex mutex;
     condition_variable cond;
 
 public:
-    virtual void push(const T& item) {
+    void push(const T& item) {
         lock_guard<std::mutex> lock(mutex); // 上锁
         queue.push(item);
         cond.notify_one();  // 通知其他线程

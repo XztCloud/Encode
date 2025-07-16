@@ -17,11 +17,18 @@ class SaveFrameTool {
 private:
     SafeLatestQueue<uint8_t*> audio_data_queue;
     SafeLatestQueue<uint8_t*> video_data_queue;
-
+    string file_path;
     int sample_rate;
     int m_width;
     int m_height;
+    AVFormatContext* format_ctx;
+    AVCodecContext* video_codec_ctx;
+    AVCodecContext* audio_codec_ctx;
 
+public:
+    SaveFrameTool(const char* file_path) : file_path(file_path), format_ctx(nullptr), video_codec_ctx(nullptr), audio_codec_ctx(
+        nullptr) {};
+    bool InitEncode(string);
 
 };
 

@@ -14,8 +14,8 @@ class DecodeFile
 {
 private:
     // 存储解码后的帧
-    SafeQueue<AVFrame*> video_frames;
-    SafeQueue<AVFrame*> audio_frames;
+    SafeQueue<AVFrame*> *video_frames;
+    SafeQueue<AVFrame*> *audio_frames;
     string file_path;
     AVFormatContext* format_ctx;
     AVCodecContext* video_codec_ctx;
@@ -24,10 +24,8 @@ private:
     int audio_stream_index;
 
 public:
-    explicit DecodeFile(const char *file_path):file_path(file_path), format_ctx(nullptr), video_codec_ctx(nullptr), audio_codec_ctx(
-            nullptr), video_stream_index(-1), audio_stream_index(-1) {};
+    DecodeFile(const char* file_path, SafeQueue<AVFrame*>* _video_queue, SafeQueue<AVFrame*>* _audio_queue) :file_path(file_path), 
+        video_frames(_video_queue), audio_frames(_audio_queue), format_ctx(nullptr), video_codec_ctx(nullptr), audio_codec_ctx(nullptr), video_stream_index(-1), audio_stream_index(-1) {};
     bool InitDeCode();
     void StartDecode();
-    // 保存成png,测试用
-    static void SaveFrameToPNG(AVFrame* frame);
 };
