@@ -2,6 +2,8 @@
 #include <string>
 #include "utils/SaveFrameToPNG.h"
 
+#define SAVE_PNG (0)
+
 bool DecodeFile::InitDeCode() {
     const AVCodec* video_codec = nullptr, *audio_codec = nullptr;
     if (avformat_open_input(&format_ctx, file_path.c_str(), nullptr, nullptr) < 0) {
@@ -36,6 +38,12 @@ bool DecodeFile::InitDeCode() {
             cerr << "Cloud not open video codec" << endl;
             return false;
         }
+        cout << "src video width:" << video_codec_ctx->width << ", src video height:" << video_codec_ctx->height << endl;
+        AVRational avg_frame_rate = format_ctx->streams[video_stream_index]->avg_frame_rate; // 平均帧率
+        AVRational r_frame_rate = format_ctx->streams[video_stream_index]->r_frame_rate; // 真实帧率
+        double avg_fps = av_q2d(avg_frame_rate);
+        double r_fps = av_q2d(r_frame_rate);
+        cout << "avg frame rate:" << avg_fps << ", real frame rate:" << r_fps << endl;
     }
     // 初始化音频解码器
     if (audio_stream_index != -1) {
@@ -45,6 +53,7 @@ bool DecodeFile::InitDeCode() {
             cerr << "Cloud not open audio codec" << endl;
             return false;
         }
+        cout << "sample rate:" << audio_codec_ctx->sample_rate << endl;
     }
     return true;
 }
@@ -62,8 +71,10 @@ void DecodeFile::StartDecode() {
             while (avcodec_receive_frame(video_codec_ctx, frame) >= 0) {
                 AVFrame* frame_copy = av_frame_alloc();
                 av_frame_ref(frame_copy, frame);    // 深拷贝
-                if (frame_copy->format == AV_PIX_FMT_YUV420P) {
-                    SaveFrameToPNG(frame_copy);
+                if (SAVE_PNG) {
+                    if (frame_copy->format == AV_PIX_FMT_YUV420P) {
+                        SaveFrameToPNG(frame_copy);
+                    }
                 }
                 video_frames->push(frame_copy);  // 存入队列
             }

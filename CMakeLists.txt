@@ -14,7 +14,11 @@ add_executable(Encode
         src/utils/SafeQueue.h
         src/SaveFrameTool.cpp
         src/SaveFrameTool.h
-        src/utils/SafeLatestQueue.h)
+        src/utils/SafeLatestQueue.h
+        src/utils/SaveFrameToPNG.cpp
+        src/main.cpp
+        src/EncodeFile.h
+        src/EncodeFile.cpp)
 set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++")
 target_link_libraries(
         Encode
