@@ -1,6 +1,7 @@
 #pragma once
 #include <iostream>
 #include "utils/SafeQueue.h"
+#include "utils/comm.h"
 
 extern "C" {
 #include <libavformat/avformat.h>
@@ -28,4 +29,6 @@ public:
         video_frames(_video_queue), audio_frames(_audio_queue), format_ctx(nullptr), video_codec_ctx(nullptr), audio_codec_ctx(nullptr), video_stream_index(-1), audio_stream_index(-1) {};
     bool InitDeCode();
     void StartDecode();
+    bool GetVideoInfo(int& width, int& height, int& fps, AVPixelFormat& pix_fmt, AVCodecID& video_codec_id);
+    bool GetAudioInfo(int& sample_rate, int& channels, int64_t& bit_rate, AVCodecID& audio_codec_id);
 };

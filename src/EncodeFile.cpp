@@ -1,9 +1,8 @@
 #include "EncodeFile.h"
-#pragma once
 
 bool EncodeFile::InitFormat()
 {
-    avformat_alloc_output_context2(&format_ctx, nullptr, nullptr, out_file_path.c_str());
+    avformat_alloc_output_context2(&format_ctx, nullptr, "mp4", out_file_path.c_str());
     if(!format_ctx) {
         fprintf(stderr, "Cloud not create output context\n");
         return false;
@@ -13,7 +12,7 @@ bool EncodeFile::InitFormat()
     // 添加视频流
     if (fmt->video_codec != AV_CODEC_ID_NONE) {
         std::cout << "output fmt is " << fmt->video_codec << std::endl;
-        if (!InitVideoEncoder("libx264", m_width, m_height, fps, 400000, AV_PIX_FMT_YUV420P)) {
+        if (!InitVideoEncoder(params.video_codec_id, params.width, params.height, params.fps, 4000000, params.pix_fmt)) {
             fprintf(stderr, "Init video encoder failed.\n");
             CleanSource();
             return false;
@@ -32,9 +31,9 @@ bool EncodeFile::InitFormat()
         video_stream->time_base = video_codec_ctx->time_base;
     }
     if (fmt->audio_codec != AV_CODEC_ID_NONE) {
-        int audio_sample_rate = 16000;
         std::cout << "output fmt is " << fmt->audio_codec << std::endl;
-        if (!InitAudioEncoder("aac", audio_sample_rate, 2, 200000)) {
+
+        if (!InitAudioEncoder(params.audio_codec_id, params.sample_rate, params.channels, params.audio_bit_rate)) {
             fprintf(stderr, "Init audio encoder failed.\n");
             CleanSource();
             return false;
@@ -48,16 +47,16 @@ bool EncodeFile::InitFormat()
         cout << "audio stream id:" << audio_stream->id << ", format_ctx nb_streams:" << format_ctx->nb_streams << endl;
         audio_stream->id = (int)format_ctx->nb_streams - 1;
         avcodec_parameters_from_context(audio_stream->codecpar, audio_codec_ctx);
-        audio_stream->time_base = {1, audio_sample_rate};
+        audio_stream->time_base = {1, params.sample_rate};
     }
     return true;
 }
 
-bool EncodeFile::InitAudioEncoder(const char *codec_name, int sample_rate, int channels, int bitrate) {
+bool EncodeFile::InitAudioEncoder(AVCodecID codec_id, int sample_rate, int channels, int64_t bitrate) {
     // 查找编码器
-    const AVCodec *codec = avcodec_find_decoder_by_name(codec_name);
+    const AVCodec *codec = avcodec_find_encoder(codec_id);
     if (!codec) {
-        fprintf(stderr, "Codec %s not found", codec_name);
+        fprintf(stderr, "Codec %s not found",avcodec_get_name(codec_id));
         return false;
     }
 
@@ -73,6 +72,17 @@ bool EncodeFile::InitAudioEncoder(const char *codec_name, int sample_rate, int c
     av_channel_layout_uninit(&audio_codec_ctx->ch_layout);
     av_channel_layout_default(&audio_codec_ctx->ch_layout, channels);
 
+    // 强制关键参数一致性
+    if (audio_codec_ctx->sample_fmt != AV_SAMPLE_FMT_FLTP) {
+        fprintf(stderr, "Unsupported sample format: %d\n", audio_codec_ctx->sample_fmt);
+        return false;
+    }
+
+    // 检查帧尺寸对齐
+    if (audio_codec_ctx->frame_size <= 0) {
+        audio_codec_ctx->frame_size = 1024; // AAC典型值
+    }
+
     // 打开编码器
     if (avcodec_open2(audio_codec_ctx, codec, nullptr) < 0) {
         fprintf(stderr, "Could not open audio codec.\n");
@@ -82,11 +92,11 @@ bool EncodeFile::InitAudioEncoder(const char *codec_name, int sample_rate, int c
     return true;
 }
 
-bool EncodeFile::InitVideoEncoder(const char *codec_name, int width, int height, int fps, int bitrate, AVPixelFormat pix_fmt)
+bool EncodeFile::InitVideoEncoder(AVCodecID codec_id, int width, int height, int fps, int bitrate, AVPixelFormat pix_fmt)
 {
-    const AVCodec *codec = avcodec_find_encoder_by_name(codec_name);
+    const AVCodec *codec = avcodec_find_encoder(codec_id);
     if (!codec) {
-        fprintf(stderr, "Codec %s not found.", codec_name);
+        fprintf(stderr, "Codec %s not found.", avcodec_get_name(codec_id));
         return false;
     }
 
@@ -103,16 +113,18 @@ bool EncodeFile::InitVideoEncoder(const char *codec_name, int width, int height,
     video_codec_ctx->height = height;
     video_codec_ctx->time_base = {1, fps};
     video_codec_ctx->framerate = {fps, 1};
-    video_codec_ctx->gop_size = 25;
-    video_codec_ctx->max_b_frames = 1;
+    video_codec_ctx->gop_size = fps;    // 未生效
+    video_codec_ctx->max_b_frames = 0;
     video_codec_ctx->pix_fmt = pix_fmt;
 
     AVDictionary *opt = nullptr;
     // 对于H264 可以设置额外参数
     if (video_codec_ctx->codec_id == AV_CODEC_ID_H264) {
-        av_dict_set(&opt, "preset", "slow", 0); // 编码质量预设
-        av_dict_set(&opt, "crf", "23", 0);      // 恒定质量模式
+        av_dict_set(&opt, "preset", "fast", 0); // 编码质量预设
         av_dict_set(&opt, "tune", "film", 0);
+        // av_dict_set(&opt, "keyint", "50", 0);
+        // av_dict_set(&opt, "min-keyint", "50", 0);
+        // av_dict_set(&opt, "force-cfr", "1", 0);   // 固定帧率模式
     }
     // 打开编码器
     if (avcodec_open2(video_codec_ctx, codec, &opt) < 0) {
@@ -170,11 +182,7 @@ void EncodeFile::StartEncode()
     AVFrame *audio_frame = av_frame_alloc();
     AVFrame *video_frame = av_frame_alloc();
     while (video_frames->size() > 0) {
-//        if (audio_frames->pop(audio_frame)) {
-//            if (EncodeAndWriteAudio(audio_codec_ctx, format_ctx, audio_stream, audio_frame) != 0) {
-//                break;
-//            }
-//        }
+        printf("video queue size:%zu\n", video_frames->size());
         if (video_frames->pop(video_frame)) {
             if (EncodeAndWriteVideo(video_codec_ctx, format_ctx, video_stream, video_frame) != 0) {
 //                break;
@@ -183,30 +191,67 @@ void EncodeFile::StartEncode()
 //        av_frame_unref(audio_frame);
         av_frame_unref(video_frame);
     }
+    while (audio_frames->size() > 0) {
+        if (audio_frames->pop(audio_frame)) {
+            if (EncodeAndWriteAudio(audio_codec_ctx, format_ctx, audio_stream, audio_frame) != 0) {
+                // break;
+            }
+            av_frame_unref(audio_frame);
+        }
+    }
     av_frame_free(&audio_frame);
     av_frame_free(&video_frame);
     // 刷新视频编码器
-//    ret = encode_and_write_video(video_codec_ctx, fmt_ctx, video_stream, NULL);
-    if (EncodeAndWriteVideo(video_codec_ctx, format_ctx, video_stream, nullptr) < 0) {
-        fprintf(stderr, "Error flushing video encoder\n");
+    int ret = EncodeAndWriteVideo(video_codec_ctx, format_ctx, video_stream, nullptr);
+    if (ret < 0) {
+        fprintf(stderr, "Flushing failed: %s\n", ffmpeg_error_string(ret));
         CleanSource();
+        return;
+    }
+    ret = EncodeAndWriteAudio(audio_codec_ctx, format_ctx, audio_stream, nullptr);
+    if (ret < 0) {
+        fprintf(stderr, "Flushing failed: %s\n", ffmpeg_error_string(ret));
+        CleanSource();
+        return;
+    }
+    printf("finish encode\n");
+
+    // 写入文件尾
+    if (av_write_trailer(format_ctx) < 0) {
+        fprintf(stderr, "Failed to write trailer\n");
     }
 
+    // 确保关闭文件句柄
+    if (!(format_ctx->flags & AVFMT_NOFILE)) {
+        avio_closep(&format_ctx->pb);
+    }
     CleanSource();
 }
 
 int EncodeFile::EncodeAndWriteVideo(AVCodecContext *codec_ctx, AVFormatContext *fmt_ctx, AVStream *stream, AVFrame *frame) {
     AVPacket *pkt = av_packet_alloc();
     if(!pkt) {
-        fprintf(stderr, "Cloud not allocate packet\n");
+        fprintf(stderr, "Could not allocate packet\n");
         return -1;
+    }
+    static int64_t frame_count = 0;
+    if (frame) {
+        printf("ori frame->pts: %lld, duration:%lld\n", frame->pts, frame->duration);
+        frame->pts = frame_count;
+        frame->duration = 1;  // 每帧持续一个时间基单位
+        if(frame_count % 50 == 0) {
+            frame->pict_type = AV_PICTURE_TYPE_I;
+            frame->key_frame = 1;
+        }
+        frame_count++;
     }
 
     // 发送帧到编码器
     int ret = avcodec_send_frame(codec_ctx, frame);
     if (ret < 0) {
-        fprintf(stderr, "Error send frame to encoder.\n");
-        return -1;
+        fprintf(stderr, "Error sending frame to encoder: %s\n", ffmpeg_error_string(ret));
+        av_packet_free(&pkt);
+        return ret;
     }
 
     while (ret >= 0) {
@@ -214,27 +259,32 @@ int EncodeFile::EncodeAndWriteVideo(AVCodecContext *codec_ctx, AVFormatContext *
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
             break;
         } else if (ret < 0) {
-            fprintf(stderr, "Error during encoding.\n");
+            fprintf(stderr, "Error during encoding: %s\n", ffmpeg_error_string(ret));
             break;
         }
-        // 设置数据包时间戳，由编码时间戳改为封装时间戳
+        // 设置数据包时间戳，从编码器时间基转为流时间基
         av_packet_rescale_ts(pkt, codec_ctx->time_base, stream->time_base);
         pkt->stream_index = stream->index;
-        cout << "pkt->pts:" << pkt->pts;
+
+        printf("pkt->pts:%lld, pkt->duration:%lld\n", pkt->pts, pkt->duration);
+        if (frame != nullptr) {
+            printf("frame->pts: %lld\n", frame->pts);
+        }
+
         // 写入编码后的数据包
         ret = av_interleaved_write_frame(fmt_ctx, pkt);
         if (ret < 0) {
-            fprintf(stderr, "Error writing video packet\n");
+            fprintf(stderr, "Error writing video packet: %s\n", ffmpeg_error_string(ret));
             break;
         }
         av_packet_unref(pkt);
     }
     av_packet_free(&pkt);
+    // 若返回值为 AVERROR_EOF，说明正常结束，否则返回错误码
     return ret == AVERROR_EOF ? 0 : ret;
 }
 
-int
-EncodeFile::EncodeAndWriteAudio(AVCodecContext *codec_Ctx, AVFormatContext *fmt_ctx, AVStream *stream, AVFrame *frame)
+int EncodeFile::EncodeAndWriteAudio(AVCodecContext *codec_Ctx, AVFormatContext *fmt_ctx, AVStream *stream, AVFrame *frame)
 {
     AVPacket *pkt = av_packet_alloc();
     if (!pkt) {
@@ -244,8 +294,9 @@ EncodeFile::EncodeAndWriteAudio(AVCodecContext *codec_Ctx, AVFormatContext *fmt_
     // 发送帧到编码器
     int ret = avcodec_send_frame(codec_Ctx, frame);
     if (ret < 0) {
-        fprintf(stderr, "Error sending audio frame to encoder\n");
-        return -1;
+        av_packet_free(&pkt);
+        fprintf(stderr, "Error sending audio frame to encoder, %s\n", ffmpeg_error_string(ret));
+        return ret;
     }
 
     while(ret >= 0) {
@@ -267,5 +318,5 @@ EncodeFile::EncodeAndWriteAudio(AVCodecContext *codec_Ctx, AVFormatContext *fmt_
         av_packet_unref(pkt);
     }
     av_packet_free(&pkt);
-    return ret == AVERROR_EOF ? 0 : ret;
+    return (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) ? 0 : ret;
 }

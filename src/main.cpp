@@ -11,15 +11,25 @@ int main()
     if (!ret) {
         return -1;
     }
+    EncoderParams params;
+    decodeFile->GetVideoInfo(params.width, params.height, params.fps, params.pix_fmt, params.video_codec_id);
+    decodeFile->GetAudioInfo(params.sample_rate, params.channels, params.audio_bit_rate, params.audio_codec_id);
     decodeFile->StartDecode();
 
-    auto* encodeFile = new EncodeFile("./output.mp4", 1920, 1080, 24, audio_queue, video_queue);
+    auto* encodeFile = new EncodeFile("./output.mp4", params, audio_queue, video_queue);
     if (!encodeFile->InitFormat()) {
         fprintf(stderr, "init format failed.");
         return -1;
     }
     encodeFile->StartEncode();
+
+    delete decodeFile;
+    delete encodeFile;
+    delete audio_queue;
+    delete video_queue;
     int num;
     cin >> num;
+
+
     return 0;
 }
